@@ -1,0 +1,49 @@
+name: Sync Folder and Restart Space
+
+on:
+  schedule:
+    # 05:00 AM UTC todos los días
+    - cron: '0 5 * * *'
+  workflow_dispatch: # Permite ejecutarlo manualmente para probar
+
+jobs:
+  sync-and-restart:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout my repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 0
+
+      - name: Sync mediaflow_proxy folder
+        run: |
+          # Configurar identidad de Git
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Clonar el repo original en una carpeta temporal
+          git clone --depth 1 https://github.com/mhdzumair/mediaflow-proxy.git temp_repo
+          
+          # Reemplazar tu carpeta local con la del repo original
+          rm -rf mediaflow_proxy
+          cp -r temp_repo/mediaflow_proxy .
+          
+          # Limpiar carpeta temporal
+          rm -rf temp_repo
+          
+          # Hacer commit y push si hay cambios
+          git add mediaflow_proxy
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "No hay cambios para actualizar."
+          else
+            git commit -m "Auto-sync mediaflow_proxy folder from original repo"
+            git push origin main
+          fi
+
+      - name: Force Factory Reboot on Hugging Face
+        run: |
+          # Esperar unos segundos para que HF detecte el push
+          sleep 10
+          curl -X POST "https://huggingface.co/api/spaces/ImNacho/mediaflowproxy/restart?factory=true" \
+          -H "Authorization: Bearer ${{ secrets.HF_TOKEN }}"
