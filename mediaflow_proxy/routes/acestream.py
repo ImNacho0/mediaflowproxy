@@ -9,8 +9,7 @@ Provides endpoints for proxying acestream content:
 
 import asyncio
 import logging
-from functools import lru_cache
-from typing import Annotated, TYPE_CHECKING
+from typing import Annotated
 from urllib.parse import urlencode, urljoin, urlparse
 
 import aiohttp
@@ -18,6 +17,8 @@ from fastapi import APIRouter, Query, Request, HTTPException, Response, Depends
 from starlette.background import BackgroundTask
 
 from mediaflow_proxy.configs import settings
+from mediaflow_proxy.remuxer.transcode_pipeline import stream_transcode_universal
+from mediaflow_proxy.utils.acestream import acestream_manager, AcestreamSession
 from mediaflow_proxy.utils.http_client import create_aiohttp_session
 from mediaflow_proxy.utils.http_utils import (
     get_original_scheme,
@@ -33,22 +34,6 @@ from mediaflow_proxy.utils.hls_prebuffer import hls_prebuffer
 logger = logging.getLogger(__name__)
 acestream_router = APIRouter()
 
-if TYPE_CHECKING:
-    from mediaflow_proxy.utils.acestream import AcestreamSession
-
-
-def _get_acestream_manager():
-    from mediaflow_proxy.utils.acestream import acestream_manager
-
-    return acestream_manager
-
-
-@lru_cache(maxsize=1)
-def _load_transcode_pipeline():
-    from mediaflow_proxy.remuxer.transcode_pipeline import stream_transcode_universal
-
-    return stream_transcode_universal
-
 
 class AcestreamM3U8Processor(M3U8Processor):
     """
@@ -61,7 +46,7 @@ class AcestreamM3U8Processor(M3U8Processor):
     def __init__(
         self,
         request: Request,
-        session: "AcestreamSession",
+        session: AcestreamSession,
         key_url: str = None,
         force_playlist_proxy: bool = True,
         key_only_proxy: bool = False,
@@ -155,7 +140,6 @@ async def acestream_hls_manifest(
     """
     if not settings.enable_acestream:
         raise HTTPException(status_code=503, detail="Acestream support is disabled")
-    acestream_manager = _get_acestream_manager()
 
     if not infohash and not id:
         raise HTTPException(status_code=400, detail="Either 'infohash' or 'id' parameter is required")
@@ -294,7 +278,6 @@ async def acestream_segment_proxy(
     """
     if not settings.enable_acestream:
         raise HTTPException(status_code=503, detail="Acestream support is disabled")
-    acestream_manager = _get_acestream_manager()
 
     # Use id or infohash for session lookup
     session_key = id or infohash
@@ -385,7 +368,6 @@ async def acestream_ts_stream(
     """
     if not settings.enable_acestream:
         raise HTTPException(status_code=503, detail="Acestream support is disabled")
-    acestream_manager = _get_acestream_manager()
 
     if not infohash and not id:
         raise HTTPException(status_code=400, detail="Either 'infohash' or 'id' parameter is required")
@@ -456,7 +438,6 @@ async def acestream_ts_stream(
             # Use our custom PyAV pipeline with forced video re-encoding
             # (live MPEG-TS sources often have corrupt H.264 bitstreams
             # that browsers reject; re-encoding produces a clean stream).
-            stream_transcode_universal = _load_transcode_pipeline()
             content = stream_transcode_universal(
                 _acestream_ts_source(),
                 force_video_reencode=True,
@@ -528,7 +509,6 @@ async def acestream_status(
     """
     if not settings.enable_acestream:
         raise HTTPException(status_code=503, detail="Acestream support is disabled")
-    acestream_manager = _get_acestream_manager()
 
     if infohash:
         session = acestream_manager.get_session(infohash)
