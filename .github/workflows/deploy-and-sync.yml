@@ -23,7 +23,7 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
           # Clonar el repo original en una carpeta temporal
-          git clone --depth 1 https://github.com/mhdzumair/mediaflow-proxy.git temp_repo
+          git clone --depth 1 https://github.com/UrloMythus/UnHided.git temp_repo
           
           # Reemplazar tu carpeta local con la del repo original
           rm -rf mediaflow_proxy
